@@ -1,7 +1,10 @@
 <?php
 // app/core/Database.php
 
-// Load the database configuration file to make constants available
+// Nạp file cấu hình
+
+
+// NẠP FILE CONFIG Ở ĐÂY ĐỂ CÁC HẰNG SỐ CÓ SẴN
 require_once __DIR__ . '/../../config/database.php';
 
 class Database {
@@ -10,9 +13,12 @@ class Database {
     private $stmt;
 
     private function __construct() {
-        // Ensure all required database constants are defined
+        // KHÔNG DÙNG global $dsn, $options; nữa
+
+        // TỰ TẠO $dsn và $options Ở ĐÂY DỰA TRÊN CÁC HẰNG SỐ
+        // Đảm bảo các hằng số DB_HOST, DB_NAME, DB_CHARSET đã được định nghĩa trong config/database.php
         if (!defined('DB_HOST') || !defined('DB_NAME') || !defined('DB_CHARSET') || !defined('DB_USER') || !defined('DB_PASS')) {
-            die("Error: One or more required DB constants (DB_HOST, DB_NAME, etc.) are not defined in the config file.");
+            die("Lỗi: Một hoặc nhiều hằng số DB (DB_HOST, DB_NAME, etc.) chưa được định nghĩa trong file config.");
         }
 
         $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=" . DB_CHARSET;
@@ -23,17 +29,16 @@ class Database {
         ];
 
         try {
+            // Sử dụng các biến cục bộ $dsn, $options và các hằng số DB_USER, DB_PASS
             $this->pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
+            // echo "<p style='color:green;'>Kết nối CSDL thành công!</p>"; // Bỏ comment nếu muốn thấy
         } catch (PDOException $e) {
-            // In a production environment, you might want to log this error instead of dying
-            die("Database connection failed: " . $e->getMessage());
+            die("Kết nối CSDL thất bại: " . $e->getMessage());
         }
     }
 
-    /**
-     * Get the singleton instance of the Database class.
-     * @return Database
-     */
+
+    // Singleton pattern để đảm bảo chỉ có một instance của Database
     public static function getInstance() {
         if (self::$instance === null) {
             self::$instance = new Database();
@@ -41,20 +46,13 @@ class Database {
         return self::$instance;
     }
 
-    /**
-     * Prepare a statement with an SQL query.
-     * @param string $sql The SQL query.
-     */
+    // Chuẩn bị câu lệnh SQL
     public function query($sql) {
         $this->stmt = $this->pdo->prepare($sql);
     }
 
-    /**
-     * Bind values to the prepared statement.
-     * @param mixed $param The parameter identifier.
-     * @param mixed $value The value to bind.
-     * @param int|null $type The explicit data type for the parameter.
-     */
+    // Bind giá trị
+    // Ví dụ: $db->bind(':email', $email);
     public function bind($param, $value, $type = null) {
         if (is_null($type)) {
             switch (true) {
@@ -74,83 +72,53 @@ class Database {
         $this->stmt->bindValue($param, $value, $type);
     }
 
-    /**
-     * Execute the prepared statement.
-     * @return bool Returns true on success or false on failure.
-     */
+    // Thực thi câu lệnh đã chuẩn bị
     public function execute() {
         return $this->stmt->execute();
     }
 
-    /**
-     * Get the result set as an array of associative arrays.
-     * @return array
-     */
+    // Lấy tất cả các dòng kết quả (mảng các mảng)
     public function resultSet() {
         $this->execute();
         return $this->stmt->fetchAll();
     }
 
-    /**
-     * Get a single record as an associative array.
-     * @return mixed
-     */
+    // Lấy một dòng kết quả
     public function single() {
         $this->execute();
         return $this->stmt->fetch();
     }
 
-    /**
-     * Get the number of rows affected by the last SQL statement.
-     * @return int
-     */
+    // Lấy số dòng bị ảnh hưởng bởi câu lệnh (INSERT, UPDATE, DELETE)
     public function rowCount() {
         return $this->stmt->rowCount();
     }
 
-    /**
-     * Get the ID of the last inserted row.
-     * @return string
-     */
+    // Lấy ID của dòng cuối cùng được chèn
     public function lastInsertId() {
         return $this->pdo->lastInsertId();
     }
 
-    /**
-     * Initiates a transaction.
-     * @return bool
-     */
+    // Bắt đầu transaction
     public function beginTransaction() {
         return $this->pdo->beginTransaction();
     }
 
-    /**
-     * Commits a transaction.
-     * @return bool
-     */
+    // Commit transaction
     public function commit() {
         return $this->pdo->commit();
     }
 
-    /**
-     * Rolls back a transaction.
-     * @return bool
-     */
+    // Rollback transaction
     public function rollBack() {
         return $this->pdo->rollBack();
     }
-    
-    /**
-     * Checks if inside a transaction.
-     * @return bool
-     */
-    public function inTransaction() {
-        return $this->pdo->inTransaction();
-    }
+    // app/core/Database.php
+public function inTransaction() {
+    return $this->pdo->inTransaction();
+}
 
-    /**
-     * Closes the database connection.
-     */
+    // Đóng kết nối (không bắt buộc, PDO sẽ tự động đóng khi script kết thúc)
     public function close() {
         $this->pdo = null;
     }

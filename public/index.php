@@ -12,6 +12,11 @@ ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 
 define('PUBLIC_PATH', __DIR__ . '/');
+// Định nghĩa đường dẫn đến thư mục gốc của dự án (ví dụ: C:\xampp\htdocs\web_final1)
+define('ROOT', dirname(dirname(__FILE__))); 
+
+// Định nghĩa đường dẫn đến thư mục 'app'
+define('APPROOT', ROOT . '/app');
 
 // --- CSRF Token Handling ---
 if (empty($_SESSION['csrf_token'])) {
@@ -40,6 +45,9 @@ function validateCsrfToken($submittedToken) {
         return false;
     }
     if (hash_equals($_SESSION['csrf_token'], $submittedToken)) {
+        // Optional: Regenerate token after successful validation for one-time use.
+        // unset($_SESSION['csrf_token']);
+        // $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
         return true;
     }
     error_log("CSRF: Token mismatch.");
@@ -98,6 +106,7 @@ if (file_exists($controllerFile)) {
     if (class_exists($controllerName)) {
         $controllerInstance = new $controllerName();
         if (method_exists($controllerInstance, $actionName)) {
+            
             call_user_func_array([$controllerInstance, $actionName], $params);
         } else {
             show_lovely_error("Routing Error", "Action <code>" . htmlspecialchars($actionName, ENT_QUOTES, 'UTF-8') . "</code> not found in controller <code>" . htmlspecialchars($controllerName, ENT_QUOTES, 'UTF-8') . "</code>.");
@@ -109,12 +118,13 @@ if (file_exists($controllerFile)) {
 } else {
     // Handle default HomeController separately if no specific controller was requested or if 'home' was explicitly in URL but file not found
     if ($controllerName === 'HomeController') { 
+        // Attempt to load HomeController even if $urlParts[0] was empty or 'home'
         $homeControllerFile = __DIR__ . '/../app/controllers/HomeController.php';
         if (file_exists($homeControllerFile)) {
             if (class_exists('HomeController')) {
                 $homeController = new HomeController();
                 if (method_exists($homeController, 'index')) {
-                    $homeController->index(); 
+                    $homeController->index(); // Default action for HomeController
                 } else {
                     show_lovely_error("Homepage Error", "Default action <code>index</code> not found in <code>HomeController</code>.");
                 }
@@ -122,9 +132,11 @@ if (file_exists($controllerFile)) {
                  show_lovely_error("Critical Homepage Error", "<code>HomeController</code> class not found, though file exists.");
             }
         } else {
+            // This means even the default HomeController.php is missing
             show_lovely_error("Critical System Error", "Default <code>HomeController.php</code> is missing. Our homepage is lost!");
         }
     } else {
+        // A specific controller was requested, but its file was not found
         show_lovely_error("Controller Not Found", "Controller file <code>" . htmlspecialchars($controllerName, ENT_QUOTES, 'UTF-8') . ".php</code> not found.");
     }
 }

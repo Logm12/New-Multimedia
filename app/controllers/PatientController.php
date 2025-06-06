@@ -9,35 +9,9 @@ class PatientController {
     private $appointmentModel;
     private $medicalRecordModel;
     private $prescriptionModel;
-    private $db; 
+    private $db; // For transactions if needed directly in controller
 
     public function __construct() {
-        if (session_status() == PHP_SESSION_NONE) {
-            session_start();
-        }
-        
-        if (file_exists(__DIR__ . '/../helpers/csrf_helper.php')) {
-            require_once __DIR__ . '/../helpers/csrf_helper.php';
-        }
-
-        // <<<< "BẢO VỆ" THÔNG MINH HƠN Ở ĐÂY NÈ CẬU >>>>
-        $urlPath = $_GET['url'] ?? '';
-        $urlParts = explode('/', rtrim($urlPath, '/'));
-        $currentAction = $urlParts[1] ?? 'dashboard'; 
-
-        // Define public actions that don't require a patient to be logged in
-        $publicActions = ['register']; 
-        
-        if (!in_array($currentAction, $publicActions)) {
-            // For all other actions, ensure the user is a logged-in patient
-            if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] !== 'Patient') {
-                $_SESSION['error_message'] = "Access denied. Please log in as a patient.";
-                header('Location: ' . BASE_URL . '/auth/login');
-                exit();
-            }
-        }
-        // <<<< KẾT THÚC PHẦN "BẢO VỆ" >>>>
-
         $this->userModel = new UserModel();
         $this->patientModel = new PatientModel();
         $this->doctorModel = new DoctorModel();
@@ -45,19 +19,26 @@ class PatientController {
         $this->appointmentModel = new AppointmentModel();
         $this->medicalRecordModel = new MedicalRecordModel();
         $this->prescriptionModel = new PrescriptionModel();
-        $this->db = Database::getInstance(); 
+        // $this->db = Database::getInstance(); // If you need direct DB access for transactions here
+        
+        // Basic auth check for patient role for relevant actions
+        // Consider a BaseController or middleware for more robust auth handling
+        $this->ensurePatientLoggedIn();
+    }
+
+    private function ensurePatientLoggedIn($redirectUrl = '/auth/login') {
+        if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] !== 'Patient') {
+            $_SESSION['error_message'] = "Access denied. Please log in as a patient.";
+            header('Location: ' . BASE_URL . $redirectUrl);
+            exit();
+        }
     }
     
     private function getPatientIdFromSession() {
-        if (!isset($_SESSION['user_id'])) {
-            // This case should be caught by the constructor check, but as a fallback
-            $_SESSION['error_message'] = "Session not found. Please log in.";
-            header('Location: ' . BASE_URL . '/auth/login'); 
-            exit();
-        }
         $patientInfo = $this->patientModel->getPatientByUserId($_SESSION['user_id']);
         if (!$patientInfo || !isset($patientInfo['PatientID'])) {
             $_SESSION['error_message'] = "Your patient profile could not be found.";
+            // Redirect to a safe page, perhaps dashboard or logout
             header('Location: ' . BASE_URL . '/patient/dashboard'); 
             exit();
         }
@@ -65,21 +46,18 @@ class PatientController {
     }
 
     protected function view($view, $data = []) {
-        // Add user info to data for the layout
-        if (!isset($data['currentUser'])) {
-            $data['currentUser'] = $this->userModel->findUserById($_SESSION['user_id'] ?? 0);
-        }
-        $data['userRole'] = $_SESSION['user_role'] ?? '';
-
         if (file_exists(__DIR__ . '/../views/' . $view . '.php')) {
             require_once __DIR__ . '/../views/' . $view . '.php';
         } else {
-            die("View '{$view}' does not exist, my dear.");
+            die("View '{$view}' does not exist.");
         }
     }
 
     public function register() {
-        if (isset($_SESSION['user_id'])) { 
+        // Registration doesn't require login, so remove ensurePatientLoggedIn for this method
+        // Or move ensurePatientLoggedIn to specific methods that need it.
+        // For now, assuming register is public.
+        if (isset($_SESSION['user_id'])) { // If already logged in, redirect
             header('Location: ' . BASE_URL . '/patient/dashboard');
             exit();
         }
@@ -87,12 +65,6 @@ class PatientController {
         $data = ['title' => 'Patient Registration', 'input' => [], 'errors' => []];
 
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-            if (!isset($_POST['csrf_token']) || !validateCsrfToken($_POST['csrf_token'])) {
-                $data['error_message'] = 'Invalid form submission. Please try again.';
-                $this->view('patient/register', $data);
-                return;
-            }
-
             $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_SPECIAL_CHARS);
             $data['input'] = [
                 'fullname' => trim($_POST['fullname'] ?? ''),
@@ -120,13 +92,13 @@ class PatientController {
 
             if (empty($data['errors'])) {
                 $data['input']['password_hash'] = password_hash($data['input']['password'], PASSWORD_DEFAULT);
-                
-                $this->db->beginTransaction();
+                $db = Database::getInstance();
+                $db->beginTransaction();
                 try {
                     $userData = [
                         'Username' => $data['input']['username'], 'PasswordHash' => $data['input']['password_hash'],
                         'Email' => $data['input']['email'], 'FullName' => $data['input']['fullname'], 'Role' => 'Patient',
-                        'PhoneNumber' => $data['input']['phone_number'] ?: null, 'Address' => $data['input']['address'] ?: null, 'Status' => 'Active'
+                        'PhoneNumber' => $data['input']['phone_number'], 'Address' => $data['input']['address'], 'Status' => 'Active'
                     ];
                     $newUserId = $this->userModel->createUser($userData);
                     if ($newUserId) {
@@ -136,14 +108,15 @@ class PatientController {
                             'Gender' => !empty($data['input']['gender']) ? $data['input']['gender'] : null
                         ];
                         if ($this->patientModel->createPatient($patientData)) {
-                            $this->db->commit();
-                            $_SESSION['success_message'] = 'Registration successful! You can now log in.';
+                            $db->commit();
+                            $_SESSION['success_message'] = 'Registration successful! You can now <a href="'.BASE_URL.'/auth/login">log in</a>.';
+                            // Redirect to login page with success message
                             header('Location: ' . BASE_URL . '/auth/login');
                             exit();
-                        } else { $this->db->rollBack(); $data['error_message'] = 'Failed to create patient profile.'; }
-                    } else { $this->db->rollBack(); $data['error_message'] = 'Failed to create user account.'; }
+                        } else { $db->rollBack(); $data['error_message'] = 'Failed to create patient profile.'; }
+                    } else { $db->rollBack(); $data['error_message'] = 'Failed to create user account.'; }
                 } catch (Exception $e) {
-                    $this->db->rollBack(); error_log("Patient Reg Error: " . $e->getMessage());
+                    $db->rollBack(); error_log("Patient Reg Error: " . $e->getMessage());
                     $data['error_message'] = 'A system error occurred. Please try again later.';
                 }
             }
@@ -152,7 +125,8 @@ class PatientController {
     }
 
     public function dashboard() {
-        $patientId = $this->getPatientIdFromSession(); 
+        // ensurePatientLoggedIn() is called in constructor
+        $patientId = $this->getPatientIdFromSession(); // Get specific PatientID
 
         $data = [
             'title' => 'Patient Dashboard',
@@ -161,18 +135,20 @@ class PatientController {
             'upcoming_appointments_count' => $this->appointmentModel->getUpcomingAppointmentsCountForPatient($patientId),
             'active_prescriptions_count' => $this->prescriptionModel->getActivePrescriptionsCountForPatient($patientId),
             'todays_appointments' => $this->appointmentModel->getTodaysAppointmentsForPatient($patientId),
-            'recent_chats_count' => 0, 
+            'recent_chats_count' => 0, // Placeholder
         ];
         $this->view('patient/dashboard', $data);
     }
 
     public function browseDoctors() {
+        // ensurePatientLoggedIn()
         $doctors = $this->doctorModel->getAllActiveDoctorsWithSpecialization();
         $data = ['title' => 'Browse Doctors', 'doctors' => $doctors];
         $this->view('patient/browse_doctors', $data);
     }
 
     public function getDoctorAvailability($doctorId = 0) {
+        // ensurePatientLoggedIn()
         header('Content-Type: application/json');
         $doctorId = (int)$doctorId;
         if ($doctorId <= 0) { http_response_code(400); echo json_encode(['success' => false, 'message' => 'Invalid Doctor ID.']); exit; }
@@ -186,6 +162,7 @@ class PatientController {
     }
 
     public function myAppointments() {
+        // ensurePatientLoggedIn()
         $patientId = $this->getPatientIdFromSession();
         $statusFilter = $_GET['status'] ?? 'All';
         $validStatuses = ['All', 'Scheduled', 'Confirmed', 'Completed', 'CancelledByPatient', 'CancelledByClinic', 'NoShow', 'Rescheduled'];
@@ -200,6 +177,7 @@ class PatientController {
     }
 
     public function viewAppointmentSummary($appointmentId = 0) {
+        // ensurePatientLoggedIn()
         $appointmentId = (int)$appointmentId;
         if ($appointmentId <= 0) { $_SESSION['error_message'] = "Invalid appointment ID."; header('Location: ' . BASE_URL . '/patient/myAppointments'); exit(); }
         
@@ -221,6 +199,7 @@ class PatientController {
     }
 
     public function viewAllMedicalRecords() {
+        // ensurePatientLoggedIn()
         $patientId = $this->getPatientIdFromSession();
         $filterDoctorId = filter_input(INPUT_GET, 'doctor_id', FILTER_VALIDATE_INT);
         $filterDateRange = filter_input(INPUT_GET, 'date_range', FILTER_SANITIZE_SPECIAL_CHARS);
@@ -240,10 +219,11 @@ class PatientController {
     }
 
     public function updateProfile() {
-        $userId = $_SESSION['user_id']; 
-        $patientSpecificId = $this->getPatientIdFromSession(); 
+        // ensurePatientLoggedIn()
+        $userId = $_SESSION['user_id']; // This is Users.UserID
+        $patientSpecificId = $this->getPatientIdFromSession(); // This is Patients.PatientID
 
-        $patientDetails = $this->patientModel->getPatientDetailsById($patientSpecificId); 
+        $patientDetails = $this->patientModel->getPatientDetailsById($patientSpecificId); // Use Patients.PatientID to fetch full details
         if (!$patientDetails) { $_SESSION['profile_message_error'] = 'Could not retrieve profile.'; header('Location: ' . BASE_URL . '/patient/dashboard'); exit(); }
         
         $currentUserData = $this->userModel->findUserById($userId);
@@ -263,22 +243,22 @@ class PatientController {
                 'current_password' => $_POST['current_password'] ?? '', 'new_password' => $_POST['new_password'] ?? '',
                 'confirm_new_password' => $_POST['confirm_new_password'] ?? ''
             ];
-            $data['input'] = array_merge((array)$patientDetails, $input); 
+            $data['input'] = array_merge((array)$patientDetails, $input); // Keep original values not in form, then override with form input
 
-            $avatarPath = $patientDetails['Avatar']; 
+            $avatarPath = $patientDetails['Avatar']; // Start with current avatar
             $avatarUpdated = false;
 
             if (isset($_FILES['profile_avatar']) && $_FILES['profile_avatar']['error'] == UPLOAD_ERR_OK) {
                 $file = $_FILES['profile_avatar'];
                 $fileExt = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
                 $allowedExt = ['jpg', 'jpeg', 'png', 'gif'];
-                if (in_array($fileExt, $allowedExt) && $file['size'] < 5000000) { 
+                if (in_array($fileExt, $allowedExt) && $file['size'] < 5000000) { // 5MB
                     $newFileName = "avatar_" . $userId . "_" . uniqid('', true) . "." . $fileExt;
-                    $uploadDir = rtrim(PUBLIC_PATH, '/') . '/uploads/avatars/'; 
+                    $uploadDir = PUBLIC_PATH . 'uploads/avatars/'; // PUBLIC_PATH ends with '/'
                     if (!is_dir($uploadDir)) mkdir($uploadDir, 0775, true);
                     
                     $fileDestinationOnServer = $uploadDir . $newFileName;
-                    $avatarPathForDb = 'uploads/avatars/' . $newFileName; 
+                    $avatarPathForDb = 'uploads/avatars/' . $newFileName; // Relative to public
 
                     if (move_uploaded_file($file['tmp_name'], $fileDestinationOnServer)) {
                         if (!empty($patientDetails['Avatar']) && $patientDetails['Avatar'] !== 'assets/images/default_avatar.png' && file_exists(PUBLIC_PATH . $patientDetails['Avatar'])) {
@@ -307,7 +287,7 @@ class PatientController {
             }
 
             if (empty($data['errors'])) {
-                $this->db->beginTransaction();
+                $db = Database::getInstance(); $db->beginTransaction();
                 try {
                     $userDataToUpdate = ['FullName' => $input['FullName'], 'Email' => $input['Email'], 'PhoneNumber' => $input['PhoneNumber'], 'Address' => $input['Address']];
                     if ($avatarUpdated) $userDataToUpdate['Avatar'] = $avatarPath;
@@ -328,28 +308,28 @@ class PatientController {
                     }
 
                     if ($userUpdateSuccess && $patientUpdateSuccess && $passwordUpdateSuccess) {
-                        $this->db->commit();
+                        $db->commit();
                         $_SESSION['profile_message_success'] = 'Profile updated successfully';
-                        $_SESSION['user_fullname'] = $input['FullName']; 
+                        $_SESSION['user_fullname'] = $input['FullName']; // Update session
                         if ($avatarUpdated) $_SESSION['user_avatar'] = $avatarPath;
                         header('Location: ' . BASE_URL . '/patient/updateProfile'); exit();
                     } else {
-                        $this->db->rollBack();
-                        if ($avatarUpdated && file_exists(PUBLIC_PATH . $avatarPath)) unlink(PUBLIC_PATH . $avatarPath); 
+                        $db->rollBack();
+                        if ($avatarUpdated && file_exists(PUBLIC_PATH . $avatarPath)) unlink(PUBLIC_PATH . $avatarPath); // Revert uploaded file
                         $data['profile_message_error'] = 'Database update failed. Try again.';
                     }
                 } catch (Exception $e) {
-                    $this->db->rollBack(); error_log("Profile Update Error: " . $e->getMessage());
+                    $db->rollBack(); error_log("Profile Update Error: " . $e->getMessage());
                     if ($avatarUpdated && file_exists(PUBLIC_PATH . $avatarPath)) unlink(PUBLIC_PATH . $avatarPath);
                     $data['profile_message_error'] = 'An error occurred: ' . $e->getMessage();
                 }
             }
         }
-        
+        // Refresh patient details for view if coming via GET or after failed POST
         $updatedPatientDetails = $this->patientModel->getPatientDetailsById($patientSpecificId);
-        if ($updatedPatientDetails) { 
+        if ($updatedPatientDetails) { // Merge with input to show latest from DB but keep form values on error
             $data['patient'] = array_merge($updatedPatientDetails, $data['input']);
-            $data['patient']['Avatar'] = $_SESSION['user_avatar'] ?? $updatedPatientDetails['Avatar']; 
+            $data['patient']['Avatar'] = $_SESSION['user_avatar'] ?? $updatedPatientDetails['Avatar']; // Ensure avatar is current from session
         }
 
         $this->view('patient/update_profile', $data);

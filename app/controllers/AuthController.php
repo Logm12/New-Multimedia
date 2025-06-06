@@ -15,7 +15,7 @@ class AuthController {
         if (file_exists(__DIR__ . '/../views/' . $view . '.php')) {
             require_once __DIR__ . '/../views/' . $view . '.php';
         } else {
-            die("View '{$view}' does not exist.");
+            die("View '{$view}' does not exist, sweetie.");
         }
     }
 
@@ -50,10 +50,10 @@ class AuthController {
             ];
 
             if (empty($data['input']['username_or_email'])) {
-                $data['errors']['username_or_email'] = 'Please enter your username or email.';
+                $data['errors']['username_or_email'] = 'Please enter your username or email, darling.';
             }
             if (empty($data['input']['password'])) {
-                $data['errors']['password'] = 'Password cannot be empty.';
+                $data['errors']['password'] = 'Password cannot be empty, sweetie.';
             }
 
             if (empty($data['errors'])) {
@@ -76,7 +76,7 @@ class AuthController {
                         $data['error_message'] = 'Your account status is currently \''.htmlspecialchars($loggedInUser['Status']).'\'. Please contact support.';
                     }
                 } else {
-                    $data['error_message'] = 'Invalid username/email or password. Check again';
+                    $data['error_message'] = 'Invalid username/email or password. Check again, lovely!';
                 }
             }
         }
@@ -86,7 +86,7 @@ class AuthController {
     public function forceChangePassword() {
         // ... (phần forceChangePassword giữ nguyên như cậu đã cung cấp) ...
         if (!isset($_SESSION['force_change_password_user_id']) || !isset($_SESSION['temp_old_password_verified'])) {
-            $_SESSION['error_message'] = "Oops, you can't access that page directly.";
+            $_SESSION['error_message'] = "Oops, you can't access that page directly, sweetie.";
             header('Location: ' . BASE_URL . '/auth/login');
             exit();
         }
@@ -103,7 +103,7 @@ class AuthController {
 
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             if (!isset($_POST['csrf_token']) || !validateCsrfToken($_POST['csrf_token'])) {
-                $data['error_message'] = 'Form submission error. Please try again.';
+                $data['error_message'] = 'Form submission error. Please try again, darling.';
                 $this->view('auth/forceChangePassword', $data);
                 return;
             }
@@ -119,13 +119,13 @@ class AuthController {
             if (empty($data['input']['new_password'])) {
                 $data['errors']['new_password'] = 'New password cannot be empty, honey.';
             } elseif (strlen($data['input']['new_password']) < 6) { 
-                $data['errors']['new_password'] = 'Password must be at least 6 characters long.';
+                $data['errors']['new_password'] = 'Password must be at least 6 characters long, sweetie.';
             }
 
             if (empty($data['input']['confirm_password'])) {
-                $data['errors']['confirm_password'] = 'Please confirm your new password';
+                $data['errors']['confirm_password'] = 'Please confirm your new password, darling.';
             } elseif ($data['input']['new_password'] !== $data['input']['confirm_password']) {
-                $data['errors']['confirm_password'] = 'Passwords do not match. Try again';
+                $data['errors']['confirm_password'] = 'Passwords do not match. Try again, lovely!';
             }
 
             if (empty($data['errors'])) {
@@ -175,7 +175,7 @@ class AuthController {
     public function processForgotPassword() {
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             if (!isset($_POST['csrf_token']) || !validateCsrfToken($_POST['csrf_token'])) {
-                $_SESSION['error_message'] = 'Invalid form submission. Please try again.';
+                $_SESSION['error_message'] = 'Invalid form submission. Please try again, sweetie.';
                 header('Location: ' . BASE_URL . '/auth/forgotPassword');
                 exit();
             }
@@ -183,7 +183,7 @@ class AuthController {
             $email = trim(filter_input(INPUT_POST, 'email', FILTER_SANITIZE_EMAIL));
 
             if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                $_SESSION['error_message'] = 'Please enter a valid email address.';
+                $_SESSION['error_message'] = 'Please enter a valid email address, darling.';
                 header('Location: ' . BASE_URL . '/auth/forgotPassword');
                 exit();
             }
@@ -191,6 +191,7 @@ class AuthController {
             $user = $this->userModel->findUserByEmail($email);
 
             if ($user) {
+                // Generate a unique token
                 try {
                     $token = bin2hex(random_bytes(32));
                 } catch (Exception $e) {
@@ -232,7 +233,7 @@ class AuthController {
      */
     public function resetPassword($token = null) {
         if (empty($token)) {
-            $_SESSION['error_message'] = 'Invalid or missing password reset token.';
+            $_SESSION['error_message'] = 'Invalid or missing password reset token, sweetie.';
             header('Location: ' . BASE_URL . '/auth/login');
             exit();
         }
@@ -240,7 +241,7 @@ class AuthController {
         $resetRequest = $this->userModel->findUserByPasswordResetToken($token);
 
         if (!$resetRequest || strtotime($resetRequest['ExpiresAt']) < time()) {
-            $errorMessage = 'This password reset link is invalid or has expired. Please request a new one.';
+            $errorMessage = 'This password reset link is invalid or has expired. Please request a new one, darling.';
             if ($resetRequest) { // If token found but expired, delete it
                 $this->userModel->deletePasswordResetToken($token);
             }
@@ -289,12 +290,12 @@ class AuthController {
             if (empty($newPassword)) {
                 $errors['new_password'] = 'New password cannot be empty, honey.';
             } elseif (strlen($newPassword) < 6) {
-                $errors['new_password'] = 'Password must be at least 6 characters long.';
+                $errors['new_password'] = 'Password must be at least 6 characters long, sweetie.';
             }
             if (empty($confirmPassword)) {
-                $errors['confirm_password'] = 'Please confirm your new password.';
+                $errors['confirm_password'] = 'Please confirm your new password, darling.';
             } elseif ($newPassword !== $confirmPassword) {
-                $errors['confirm_password'] = 'Passwords do not match. Try again!';
+                $errors['confirm_password'] = 'Passwords do not match. Try again, lovely!';
             }
 
             if (empty($errors)) {
